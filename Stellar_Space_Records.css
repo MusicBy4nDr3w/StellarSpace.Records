@@ -383,6 +383,15 @@ body.menu #menu a {
   transform: none;
   transition-delay: calc(0.3s + var(--k) * 0.07s);
 }
+.menu-credit {
+  margin-top: auto;
+  padding-top: 32px;
+  color: rgba(15, 15, 22, 0.55);
+  font: 500 11px/1.8 "DM Sans", sans-serif;
+}
+.menu-credit p {
+  margin: 0;
+}
 .btn {
   display: inline-flex;
   align-items: center;

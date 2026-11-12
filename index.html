@@ -24,7 +24,14 @@
   <body>
     <div id="bar"></div>
     <div id="glow"></div>
-    <div id="intro"><i class="mask"></i></div>
+    <div id="intro" aria-hidden="true">
+      <div class="intro-bg"></div>
+      <i class="mask intro-sym"></i>
+      <div class="intro-lockup">
+        <i class="lk-sym"></i>
+        <span class="lk-clip"><i class="lk-txt"></i></span>
+      </div>
+    </div>
 
     <header id="nav">
       <div class="wrap">
@@ -60,6 +67,9 @@
       <a href="#" style="--k: 3">Terms Of Service</a>
       <a href="#" style="--k: 4">Merchandise</a>
       <a href="#" style="--k: 5">About Us</a>
+      <a href="Submit_Your_Demo.html" class="menu-mobile-submit" style="--k: 6"
+        >Submit Your Demo</a
+      >
       <div class="menu-credit">
         <p>Designed By Hue Minh Pham</p>
         <p>Developed By Tuan Nguyen Ngoc</p>
@@ -111,11 +121,7 @@
             type="button"
             aria-label="Play track"
           ></button>
-          <button
-            id="mini-next"
-            type="button"
-            aria-label="Next track"
-          ></button>
+          <button id="mini-next" type="button" aria-label="Next track"></button>
           <span class="mini-player-time" id="mini-time">0:00 / 0:00</span>
         </div>
         <input

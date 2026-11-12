@@ -504,7 +504,9 @@ class AudioPreviewPlayer {
     });
     this.miniSeek.addEventListener("input", () => {
       if (this.audioElement && Number.isFinite(this.audioElement.duration)) {
-        this.audioElement.currentTime = Number(this.miniSeek.value);
+        const currentTime = Number(this.miniSeek.value);
+        this.audioElement.currentTime = currentTime;
+        this.updateMiniProgress(currentTime, this.audioElement.duration);
       }
     });
     $("#mini-close").addEventListener("click", () => {
@@ -518,15 +520,19 @@ class AudioPreviewPlayer {
           this.isMiniPlayerDismissed = false;
         }
 
-        this.setMiniPlayerVisibility(
-          window.scrollY > 240 && !this.isMiniPlayerDismissed,
-        );
+        this.updateMiniPlayerVisibility();
       },
       { passive: true },
     );
-
     this.updateMiniPlayer();
+    this.updateMiniPlayerVisibility();
     this.animateProgress();
+  }
+
+  updateMiniPlayerVisibility() {
+    this.setMiniPlayerVisibility(
+      window.scrollY > 240 && !this.isMiniPlayerDismissed,
+    );
   }
 
   setMiniPlayerVisibility(isVisible) {
@@ -616,6 +622,12 @@ class AudioPreviewPlayer {
       );
     });
 
+    $$(".pl a[data-i]").forEach((link) => {
+      const isActive =
+        this.isPlaying && Number(link.dataset.i) === this.slider.currentIndex;
+      $(".pg", link).classList.toggle("on", isActive);
+    });
+
     this.updateMiniPlayer();
   }
 
@@ -641,9 +653,7 @@ class AudioPreviewPlayer {
 
     this.miniTitle.textContent = release.title;
     this.miniArtist.textContent = release.artist;
-    this.miniState.textContent = this.isPlaying
-      ? "Now playing"
-      : "Ready to play";
+    this.miniState.textContent = this.isPlaying ? "" : "";
     this.miniArtwork.style.backgroundImage = release.artwork;
     this.miniArtwork.classList.toggle("has-artwork", release.hasArtwork);
     this.miniToggle.classList.toggle("playing", this.isPlaying);
@@ -743,9 +753,15 @@ class AudioPreviewPlayer {
         .connect(this.masterGain);
       this.audioElement.preload = "auto";
       this.audioElement.onloadedmetadata = () => {
+        if (!this.audioElement) {
+          return;
+        }
+
         if (!this.isFullTrack) {
           this.audioElement.currentTime = this.previewStart;
         }
+
+        this.updateMiniPlayer();
       };
       this.audioElement.onended = () => {
         this.slider.goTo(this.slider.currentIndex + 1, 1, true);
@@ -930,6 +946,11 @@ class LandingPage {
                 <span class="n">0${index + 1}</span>
                 <b>${artist.name}</b>
                 <i class="ch"></i>
+                <button
+                  class="artist-detail-close"
+                  type="button"
+                  aria-label="Close ${artist.name} profile"
+                >×</button>
               </div>
               <div class="bd">
                 <div class="in">
@@ -978,16 +999,38 @@ class LandingPage {
           this.selectArtist(artistItem);
         }
       });
-      artistItem.addEventListener("focus", () => {
+      if (!this.touchInput) {
+        artistItem.addEventListener("focus", () => {
+          this.selectArtist(artistItem);
+        });
+      }
+      artistItem.addEventListener("click", () => {
         this.selectArtist(artistItem);
       });
-      artistItem.addEventListener("click", () => {
-        if (this.touchInput && artistItem.classList.contains("open")) {
+      $(".artist-detail-close", artistItem).addEventListener(
+        "click",
+        (event) => {
+          event.stopPropagation();
           this.selectArtist(null);
-        } else {
-          this.selectArtist(artistItem);
-        }
+          artistItem.focus();
+        },
+      );
+      $(".as", artistItem).addEventListener("click", (event) => {
+        event.stopPropagation();
       });
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (
+        event.key === "Escape" &&
+        this.artistContainer.classList.contains("detail-open")
+      ) {
+        const selectedArtist = this.artistItems.find((artistItem) =>
+          artistItem.classList.contains("open"),
+        );
+        this.selectArtist(null);
+        selectedArtist?.focus();
+      }
     });
 
     this.artistContainer.addEventListener("pointerleave", (event) => {
@@ -1036,9 +1079,17 @@ class LandingPage {
     });
 
     const isSelected = Boolean(selectedArtist);
+    this.artistContainer.classList.toggle(
+      "detail-open",
+      isSelected && this.touchInput,
+    );
     this.artistContainer.classList.toggle("hov", isSelected);
     $(".lp").classList.toggle("dim", isSelected);
     document.body.classList.toggle("dim", isSelected);
+    document.body.classList.toggle(
+      "artist-detail-open",
+      isSelected && this.touchInput,
+    );
   }
 
   playReleasePreview(index) {
@@ -1047,6 +1098,194 @@ class LandingPage {
     } else {
       this.slider.goTo(index, index > this.slider.currentIndex ? 1 : -1, true);
     }
+  }
+}
+
+// Intro animation sequence helpers and class
+const introTiming = {
+  unfold: 500, // biểu tượng trượt sang trái, chữ mở ra về bên phải
+  hold: 300, // giữ logo hoàn chỉnh giữa màn hình trước khi bay lên header
+  dock: 700, // logo bay tới header trong lúc nền đen trượt lên
+  loadTimeout: 6000, // không chờ sự kiện window.load quá thời gian này
+  reducedHold: 400, // giảm chuyển động: hiện logo tĩnh rồi vào trang
+  watchdog: 15000, // giới hạn dự phòng để intro không bị kẹt trên màn hình
+};
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const easeInOutQuart = (t) =>
+  t < 0.5 ? 8 * t ** 4 : 1 - (-2 * t + 2) ** 4 / 2;
+
+class IntroSequence {
+  constructor(intro, onDone) {
+    this.intro = intro;
+    this.bg = $(".intro-bg", intro);
+    this.symbol = $(".intro-sym", intro);
+    this.lockup = $(".intro-lockup", intro);
+    this.text = $(".lk-txt", intro);
+    this.headerLogo = $("#nav .logo");
+    this.onDone = onDone;
+    this.finished = false;
+  }
+
+  async start() {
+    const watchdog = setTimeout(() => this.finish(), introTiming.watchdog);
+
+    try {
+      if (prefersReducedMotion) {
+        await this.playReduced();
+      } else {
+        await this.playFull();
+      }
+    } catch (error) {
+      console.error(error);
+    }
+
+    clearTimeout(watchdog);
+    this.finish();
+  }
+
+  // Works whether load has already fired or not, and never waits forever.
+  waitForLoad() {
+    return new Promise((resolve) => {
+      if (document.readyState === "complete") {
+        resolve();
+        return;
+      }
+
+      addEventListener("load", resolve, { once: true });
+      setTimeout(resolve, introTiming.loadTimeout);
+    });
+  }
+
+  // Resolves once the existing spin/scale/fade-in of the symbol has completed.
+  symbolReady() {
+    if (typeof this.symbol.getAnimations !== "function") {
+      return wait(1400);
+    }
+
+    return Promise.all(
+      this.symbol
+        .getAnimations()
+        .map((animation) => animation.finished.catch(() => {})),
+    );
+  }
+
+  async playFull() {
+    const loaded = this.waitForLoad();
+
+    await this.symbolReady();
+    await this.unfold();
+    await Promise.all([loaded, wait(introTiming.hold)]);
+    await this.dock();
+  }
+
+  async playReduced() {
+    this.intro.classList.add("static");
+    await Promise.all([this.waitForLoad(), wait(introTiming.reducedHold)]);
+  }
+
+  symbolCentre() {
+    const value = getComputedStyle(this.intro).getPropertyValue("--lk-sym-c");
+    return parseFloat(value) || 0.5;
+  }
+
+  async unfold() {
+    const { lockup, text, symbol } = this;
+    // start with the symbol alone on the screen centre, then centre the whole lockup
+    const shift = lockup.offsetWidth * (0.5 - this.symbolCentre());
+    const options = {
+      duration: introTiming.unfold,
+      easing: "cubic-bezier(0.7, 0, 0.2, 1)",
+      fill: "both",
+    };
+    const move = lockup.animate(
+      [{ transform: `translateX(${shift}px)` }, { transform: "translateX(0)" }],
+      options,
+    );
+    const slide = text.animate(
+      [{ transform: "translateX(-101%)" }, { transform: "translateX(0)" }],
+      options,
+    );
+
+    // swap the spinning symbol for the identical symbol inside the lockup
+    lockup.style.opacity = "1";
+    symbol.style.visibility = "hidden";
+
+    await Promise.all([move.finished, slide.finished]);
+
+    lockup.style.transform = "none";
+    text.style.transform = "none";
+    move.cancel();
+    slide.cancel();
+  }
+
+  // Live rect of the header logo (null when it is not on screen, e.g. hidden on very small phones).
+  dockTarget() {
+    if (!this.headerLogo) {
+      return null;
+    }
+
+    const rect = this.headerLogo.getBoundingClientRect();
+    const visible =
+      rect.width > 1 &&
+      rect.height > 1 &&
+      rect.bottom > 0 &&
+      rect.top < innerHeight;
+
+    return visible ? rect : null;
+  }
+
+  dock() {
+    return new Promise((resolve) => {
+      const { lockup, bg } = this;
+      const startTime = performance.now();
+
+      document.body.classList.add("go");
+
+      const frame = (now) => {
+        if (this.finished) {
+          resolve();
+          return;
+        }
+
+        const progress = Math.min(1, (now - startTime) / introTiming.dock);
+        const eased = easeInOutQuart(progress);
+        const target = this.dockTarget();
+
+        bg.style.transform = `translateY(${-100 * eased}%)`;
+
+        if (target) {
+          // recomputed every frame so a resize mid-flight still lands exactly on the header logo
+          const scale = 1 + (target.width / lockup.offsetWidth - 1) * eased;
+          const x = (target.left - lockup.offsetLeft) * eased;
+          const y = (target.top - lockup.offsetTop) * eased;
+
+          lockup.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+        } else {
+          lockup.style.transform = `translateY(${-45 * eased}vh) scale(${1 - 0.4 * eased})`;
+          lockup.style.opacity = String(1 - eased);
+        }
+
+        if (progress < 1) {
+          requestAnimationFrame(frame);
+        } else {
+          resolve();
+        }
+      };
+
+      requestAnimationFrame(frame);
+    });
+  }
+
+  finish() {
+    if (this.finished) {
+      return;
+    }
+
+    this.finished = true;
+    document.body.classList.add("go", "intro-done");
+    this.intro.classList.add("done");
+    this.onDone?.();
   }
 }
 
@@ -1095,12 +1334,14 @@ class PageEffects {
   }
 
   bindIntro() {
-    addEventListener("load", () => {
-      setTimeout(
-        () => document.body.classList.add("go"),
-        prefersReducedMotion ? 0 : 300,
-      );
-    });
+    const intro = $("#intro");
+
+    if (!intro) {
+      document.body.classList.add("go", "intro-done");
+      return;
+    }
+
+    new IntroSequence(intro).start();
   }
 
   bindRevealAnimations() {

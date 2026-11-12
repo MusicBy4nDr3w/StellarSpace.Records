@@ -1,0 +1,12 @@
+- sửa lại lending giao giữa under và main screen
+- fix intro (done)
+- fix button play ở popular (done)
+- fix color text artist xanh thành trắng (done)
+- fix ui mobile (header bar + side bar) (done)
+- miniplayer tối ưu text + mobile ui (done)
+- artist mobile
+
+
+
+- design ui "outnow"
+- design ui submition
